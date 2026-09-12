@@ -55,7 +55,7 @@ Different agent platforms provide different native tool names for identical core
 | **Exploration / Search** | `view_file`, `list_dir`, `grep_search`, `find_by_name` | `View`, `GlobTool`, `GrepTool` | `view_image`, search | `read_file`, `list_dir`, `grep` | `read_file`, `find_files`, `grep` | `cat`, `ls`, `grep`, `find` |
 | **Modification** | `replace_file_content`, `write_to_file` | `Edit`, `Write` | `apply_patch` | `write_file`, `edit` | `write_file`, `replace_file_content` | `patch`, `sed` |
 | **Command & Test Execution** | `run_command` | `Bash` | `shell` | `execute` | `run_command` | shell / terminal |
-| **Subagent Delegation** | `invoke_subagent` | `Task` / subagent | agent dispatch | `run_task` / delegate | subagent dispatch | CLI invocation |
+| **Subagent Delegation** | `invoke_subagent` | `Task` / subagent | agent dispatch | `task` (`subagent_type`) | subagent dispatch | CLI invocation |
 | **Final Report Delivery** | `send_message` (once) | final response / tool return | final response / summary | task return value | subagent completion response | stdout / return payload |
 
 ### Strict Anti-Patterns

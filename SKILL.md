@@ -20,6 +20,7 @@ Instead of relying on a single agent to plan, code, and self-validate in one con
 - **Pipeline & State Workflow**: [references/pipeline-workflow.md](references/pipeline-workflow.md)
 - **Agent Roles & Mandates**: [references/agent-roles.md](references/agent-roles.md)
 - **Verification Rubric & Standards**: [references/verification-rubric.md](references/verification-rubric.md)
+- **Subagent Setup (OpenCode, ...)**: [references/subagent-setup.md](references/subagent-setup.md)
 - **Prompt & Report Templates**: [resources/prompts.md](resources/prompts.md)
 - **End-to-End Walkthrough**: [examples/workflow-walkthrough.md](examples/workflow-walkthrough.md)
 - **Report Verification Helper**: [scripts/verify_report.py](scripts/verify_report.py)
@@ -155,7 +156,15 @@ The `/boost` pipeline enforces six non-negotiable engineering rules:
 
 ---
 
-## 5. Standard Completion Reports
+## 5. Subagent Provisioning
+
+`/boost` presumes the host agent can spawn isolated subagents. If the harness lacks them, install the ready-made worker roster first — see [references/subagent-setup.md](references/subagent-setup.md) for copy-ready definitions (OpenCode supported, with a porting checklist for other harnesses).
+
+Required roster: `deep-investigator` (read-only), `deepcoder-worker-l0` (implementation), `adversarial-verifier` (adversarial review). The orchestrator role is filled by the primary agent running this skill.
+
+---
+
+## 6. Standard Completion Reports
 
 ### Coding Worker Report Schema
 ```markdown
@@ -208,7 +217,7 @@ Prefixed `Fatal Functional Bug` / `Shallow Verification` / `Minor Robustness Ris
 
 ---
 
-## 6. Automated Validation Helper
+## 7. Automated Validation Helper
 
 To validate any completion report against the `/boost` rubric programmatically, run:
 

@@ -12,10 +12,17 @@ boost/
 ├── README.md                         # Overview, installation paths & CLI usage
 ├── references/
 │   ├── pipeline-workflow.md          # 6-state execution machine, circuit breakers & convergence
-│   ├── agent-roles.md                # Orchestrator, Worker L0, Investigator roles & invariants
-│   └── verification-rubric.md        # Deep vs Shallow verification & defect severity taxonomy
+│   ├── agent-roles.md                # Orchestrator, Investigator, Worker L0, Verifier roles & invariants
+│   ├── verification-rubric.md        # Deep vs Shallow verification & defect severity taxonomy
+│   └── subagent-setup.md             # Installing the /boost worker roster per harness (OpenCode, ...)
 ├── resources/
-│   └── prompts.md                    # Canonical system prompts and completion report templates
+│   ├── prompts.md                    # Canonical system prompts and completion report templates
+│   └── agents/
+│       └── opencode/                 # Copy-ready OpenCode subagent definitions
+│           ├── deep-investigator.md      # Read-only investigation worker (edit: deny)
+│           ├── deepcoder-worker-l0.md    # Layer 0 implementation worker
+│           ├── adversarial-verifier.md   # Adversarial patch reviewer / fixer
+│           └── boost-orchestrator.md     # Optional dedicated primary orchestrator
 ├── templates/
 │   └── prompts.md                    # Mirrored templates for backward compatibility
 ├── examples/
