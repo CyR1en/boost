@@ -11,7 +11,10 @@ The Primary Orchestrator is the mission commander. It maintains the global strat
 
 ### Core Responsibilities
 - **Task Decomposition**: Translates high-level user inquiries into strict, verifiable contracts wrapped in `<original_task>`.
+- **Parallel Investigation Fan-Out**: During scoping, spawns as many read-only `DeepInvestigator` workers as the task has independent questions (one per suspected fault region, dependency, or call graph). Merges their findings before dispatching implementation.
 - **Subagent Delegation**: Spawns isolated workers via the platform's native delegation mechanism (`invoke_subagent` in Antigravity, `Task` / Subagents in Claude Code, `run_task` in OpenCode, delegates in Pi) with dedicated roles and clear context boundaries.
+- **Workspace Isolation**: When parallel implementation workers are needed, places each in an ephemeral `git worktree` (or the platform equivalent, e.g., `invoke_subagent` workspace `branch`) and merges verified results. If worktrees are unavailable, assigns provably disjoint file scopes instead — never let two writers share a file.
+- **Permission Inheritance**: Workers inherit the host workspace's file-access and command-approval policies. The orchestrator does not widen them; protected actions still surface to the user.
 - **Invariant Enforcement**: Ensures that no worker modifies files out of scope, bypasses test suites, or prematurely terminates without structured verification.
 - **Regression Coordination**: Runs the global regression test suite after candidate patches are verified locally.
 - **User Synthesis**: Delivers clear, evidence-backed summaries to the user without overwhelming them with low-level chatter.
@@ -62,10 +65,36 @@ Different agent platforms provide different native tool names for identical core
 
 ---
 
-## 3. Improvement Worker (`DeepInvestigator` / Red Team)
+## 3. Investigation Worker (`DeepInvestigator`) — Read-Only
 
 ### Mandate
-The Improvement Worker acts as an adversarial reviewer and verification engineer. Its explicit goal is to **challenge, break, and remediate** the candidate solution produced by the Coding Worker.
+The Investigation Worker is the read-only reconnaissance specialist. It answers focused root-cause questions and maps unfamiliar territory so the coding worker never has to explore blind. Multiple investigators run **in parallel** during scoping — since they never write files, they are always safe in the shared workspace.
+
+### Operating Principles
+1. **Strictly Read-Only**:
+   - **Must never modify, create, or delete files.** If a fix seems obvious, describe it — do not apply it.
+   - May run non-mutating commands: tests, linters, debuggers, read-only builds, `git log`/`git blame`, profiling.
+2. **One Question Per Investigator**:
+   - Each investigator is dispatched with a single focused question ("why does X time out", "what calls `renewLease`", "which versions of dep Y are in the tree"). Do not hand one investigator a compound investigation.
+3. **Independent Understanding**:
+   - Reads `<original_task>` first and investigates without anchoring on coordinator speculation.
+4. **Evidence-Backed Findings**:
+   - Every claim cites file:line evidence or command output. A suspicion without a reproducer is labeled as such.
+
+### Output Contract
+A single report containing: the question answered, findings with evidence (file:line / command output), suspected root cause, and a recommended verification path for the coding worker. No severity prefixes required — this is analysis, not a patch audit.
+
+### Strict Anti-Patterns
+- Editing files or applying "quick fixes" under the justification that they're small.
+- Broad, unfocused directory sweeps instead of targeted tracing.
+- Duplicating work another investigator was dispatched to cover.
+
+---
+
+## 4. Adversarial Verification Worker (`AdversarialVerifier` / Red Team)
+
+### Mandate
+The Adversarial Verification Worker acts as a hostile reviewer and verification engineer. Its explicit goal is to **challenge, break, and remediate** the candidate solution produced by the Coding Worker. Unlike `DeepInvestigator`, this worker may modify code — it fixes what it breaks.
 
 ### Operating Principles
 1. **Anti-Rubber-Stamp Mandate**:
@@ -92,7 +121,7 @@ The Improvement Worker acts as an adversarial reviewer and verification engineer
 
 ---
 
-## 4. Synthesis & Integration Lead
+## 5. Synthesis & Integration Lead
 
 ### Mandate
 Ensures the reconciled solution satisfies all criteria, passes all repository-level validations, and is packaged with clear documentation.
@@ -106,10 +135,11 @@ Ensures the reconciled solution satisfies all criteria, passes all repository-le
 
 ## Summary Matrix
 
-| Role | Primary Function | Primary Toolset | Output Format |
-| :--- | :--- | :--- | :--- |
-| **Coordinator** | Planning, delegation, regression sweep | Subagent tools, `run_command` | Final user delivery |
-| **DeepCoderWorkerL0** | Reproduction, surgical implementation | File tools, `run_command` | 5-part worker report |
-| **DeepInvestigator** | Adversarial stress testing, bug fixing | File tools, `run_command` | 5-part reviewer report (`input → expected → actual → root cause`) |
-| **Synthesis Lead** | Integration, repo-wide verification | Test suites, linters | Production-ready patch |
+| Role | Primary Function | Writes Files? | Primary Toolset | Output Format |
+| :--- | :--- | :--- | :--- | :--- |
+| **Coordinator** | Planning, delegation, regression sweep | No | Subagent tools, `run_command` | Final user delivery |
+| **DeepInvestigator** (x N, parallel) | Read-only root-cause recon | **Never** | Read/search/test-run tools | Analysis report (question → evidence → suspected root cause) |
+| **DeepCoderWorkerL0** | Reproduction, surgical implementation | Yes (scoped/worktree) | File tools, `run_command` | 5-part worker report |
+| **AdversarialVerifier** | Adversarial stress testing, bug fixing | Yes (fixes what it breaks) | File tools, `run_command` | 5-part reviewer report (`input → expected → actual → root cause`) |
+| **Synthesis Lead** | Integration, repo-wide verification | Merge only | Test suites, linters | Production-ready patch |
 

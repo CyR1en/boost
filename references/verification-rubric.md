@@ -94,7 +94,7 @@ When reporting issues, workers must prefix each known issue or risk with one of 
 
 ## 4. Adversarial Red-Teaming Checklist
 
-Improvement workers must run through this checklist before approving any change:
+Adversarial verification workers must run through this checklist before approving any change:
 
 - [ ] **Empty / Nil Inputs**: Does the code handle `null`, `undefined`, `None`, empty strings, empty arrays, or missing dictionary keys without uncaught exceptions?
 - [ ] **Numeric Boundaries**: Does the code handle `0`, negative numbers, floating point precision limits, and integer overflows?

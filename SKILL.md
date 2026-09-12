@@ -46,50 +46,71 @@ The `/boost` pipeline employs a three-tier hierarchical division of labor:
 ┌─────────────────────────────────────────────────────────────┐
 │                    Primary Orchestrator                     │
 │  - Parses <original_task> & isolates workspace boundaries    │
-│  - Formulates strategy & delegates to specialized subagents │
+│  - Fans out parallel read-only investigators at scoping      │
+│  - Delegates implementation to isolated coding worker(s)     │
 │  - Synthesizes findings & runs final regression sweep       │
-└──────────────┬──────────────────────────────▲───────────────┘
-               │                              │
-               │ 1. Spawn Worker (Isolated)   │ 4. Single Final Report
-               ▼                              │
-┌───────────────────────────────┐             │
-│   Layer 0 Coding Worker       │             │
-│   (DeepCoderWorkerL0)         │             │
-│  - Targeted code modification │             │
-│  - Reproduces bug with tests  │─────────────┤
-│  - Adheres to minimal diff    │             │
-└──────────────┬────────────────┘             │
-               │                              │
-               │ 2. Candidate Patch           │
-               ▼                              │
-┌───────────────────────────────┐             │
-│ Improvement / Adversarial     │             │
-│ Worker (DeepInvestigator)     │─────────────┘
-│  - Actively tries to break fix│ 3. Adversarial Feedback
-│  - Tests boundary conditions  │    & Regression Audit
-│  - Edge-case stress testing   │
-└───────────────────────────────┘
+└──────┬───────────────┬──────────────────────────▲───────────┘
+       │               │                          │
+       │ 0a. Parallel  │ 0b. Spawn Coding Worker  │ 4. Single Final Report
+       │     read-only │    (isolated context)    │
+       ▼     investigators (no writes)            │
+┌──────────────┐      │                           │
+│ DeepInvest-  │      ▼                           │
+│ igator x N   │ ┌───────────────────────────────┐│
+│ (read-only)  │ │   Layer 0 Coding Worker       ││
+│ - root cause │ │   (DeepCoderWorkerL0)         ││
+│ - call graph │ │  - Targeted code modification ││
+│   tracing    │ │  - Reproduces bug with tests  │├───────────┤
+│ - dep recon  │ │  - Adheres to minimal diff    ││           │
+└──────────────┘ └──────────────┬────────────────┘│           │
+                                │                 │           │
+                                │ 2. Candidate Patch          │
+                                ▼                 │           │
+                     ┌───────────────────────────────┐        │
+                     │ Adversarial Verification      │        │
+                     │ Worker (AdversarialVerifier)  │────────┘
+                     │  - Actively tries to break fix│ 3. Adversarial Feedback
+                     │  - Tests boundary conditions  │    & Regression Audit
+                     │  - Edge-case stress testing   │
+                     └───────────────────────────────┘
 ```
+
+### Workspace Isolation Model
+
+Workers get **context isolation** by default (clean context windows, no inherited history). For **filesystem isolation**, follow this ladder:
+
+1. **Preferred — git worktrees**: When multiple implementation workers run in parallel, or when candidate patches must not contaminate the user's working tree, spawn each worker in an ephemeral `git worktree` (or the host platform's equivalent — e.g., `invoke_subagent` workspace `branch` in Antigravity). The orchestrator merges verified results afterward.
+2. **Fallback — disjoint file scopes**: If worktrees are unavailable, parallel workers are permitted only when their file scopes are provably disjoint. Declare each worker's allowed paths in its dispatch prompt and forbid edits outside them.
+3. **Read-only investigators are always safe** in the shared tree — they never write files, so `DeepInvestigator` fan-out needs no isolation beyond context.
+
+All workers inherit the host agent's permission policies (file access rules, command approvals). Protected commands still surface to the user for approval.
 
 ### Agent Roles
 
 1. **Primary Orchestrator (Coordinator)**:
    - Holds the master plan and coordinates execution phases.
    - **Never** attempts manual code modifications or guesswork directly.
+   - Fans out parallel read-only investigators during scoping when the task spans unfamiliar or broad code areas.
    - Holds subagents to strict verification and reporting contracts.
    - Coordinates regression testing before delivering the final resolution.
 
-2. **Layer 0 Coding Worker (`DeepCoderWorkerL0`)**:
+2. **Investigation Worker (`DeepInvestigator`)** — *read-only*:
+   - Runs in parallel with other investigators during scoping; may be spawned any time a focused root-cause question exists.
+   - Traces execution call graphs, analyzes unfamiliar dependencies, and localizes defects.
+   - **Must never modify files.** Output is analysis only: findings, suspected root cause, and a recommended verification path.
+
+3. **Layer 0 Coding Worker (`DeepCoderWorkerL0`)**:
    - Operates in an isolated subagent context to focus solely on implementation.
    - Treats `<original_task>` as authoritative over coordinator interpretations.
    - Reproduces the defect with automated tests prior to making modifications.
    - Adheres to the **Minimal Diff Principle** and matches surrounding codebase conventions.
    - Submits a brutally honest, single final completion report.
 
-3. **Improvement / Adversarial Worker (`DeepInvestigator`)**:
+4. **Adversarial Verification Worker (`AdversarialVerifier`)**:
    - Follows the coding worker with an explicit adversarial mindset ("break the patch").
    - Hunts for regressions, edge cases (empty inputs, concurrency contention, resource leaks), and test cheating.
    - Generates counter-example tests to expose latent defects.
+   - Unlike `DeepInvestigator`, this worker **does** modify code to fix what it breaks.
 
 ---
 
@@ -98,6 +119,7 @@ The `/boost` pipeline employs a three-tier hierarchical division of labor:
 ### Phase 1: Architectural Scoping & Task Ingestion
 - Extract the raw, authoritative task from `<original_task>`.
 - Identify affected modules, dependency graphs, and existing test suites.
+- **Fan out parallel `DeepInvestigator` workers** (read-only) for any task spanning unfamiliar or broad code areas — one per independent question (root cause, call graph, dependency recon). Merge their findings before dispatching implementation.
 - Establish an isolated reproduction harness.
 - Formulate acceptance criteria and boundary constraints.
 
@@ -106,8 +128,9 @@ The `/boost` pipeline employs a three-tier hierarchical division of labor:
 - Implement the general solution without special-casing tests.
 - Verify locally by executing real unit and integration test suites.
 - Package diff with a structured verification record.
+- When multiple implementation workstreams run in parallel, place each in an ephemeral `git worktree` (or enforce disjoint file scopes — see Workspace Isolation Model).
 
-### Phase 3: Adversarial Verification (Improvement Worker)
+### Phase 3: Adversarial Verification (AdversarialVerifier)
 - Subject the candidate patch to stress testing and adversarial edge cases.
 - Verify untouched components to ensure zero collateral regressions.
 - Audit test suites to guarantee no existing assertions were weakened or bypassed.
@@ -157,7 +180,7 @@ Prefix each issue with:
 - `Minor Robustness Risk` — Low-probability edge case or performance risk
 
 ## 5. Untested Edge Cases & Next Step
-[High-priority attack surfaces for the improvement/adversarial worker.]
+[High-priority attack surfaces for the adversarial verification worker.]
 ```
 
 ### Adversarial / Reviewer Worker Report Schema

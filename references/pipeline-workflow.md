@@ -17,10 +17,17 @@ This reference details the step-by-step lifecycle, state machine transitions, op
            │
            ▼
 ┌─────────────────────────┐
+│ State 0.5: Parallel     │  - Fan out N read-only DeepInvestigator workers,
+│ Investigation Fan-Out   │    one per independent question (root cause,
+│ (optional)              │    call graph, dependency recon)
+└──────────┬──────────────┘  - Safe in shared tree: investigators never write
+           │                  - Merge findings into implementation brief
+           ▼
+┌─────────────────────────┐
 │ State 1: Workstream     │  - Coordinator determines subagent roles
 │ Orchestration           │  - Spawns DeepCoderWorkerL0 with isolated context
-└──────────┬──────────────┘
-           │
+└──────────┬──────────────┘  - Parallel impl workers? → git worktree per worker
+           │                  (fallback: provably disjoint file scopes)
            ▼
 ┌─────────────────────────┐
 │ State 2: Implementation │  - Reproduce defect on clean baseline
@@ -35,7 +42,7 @@ This reference details the step-by-step lifecycle, state machine transitions, op
            │
            ▼
 ┌─────────────────────────┐
-│ State 4: Adversarial    │  - Spawns DeepInvestigator with <original_task> & <prior_attempt>
+│ State 4: Adversarial    │  - Spawns AdversarialVerifier with <original_task> & <prior_attempt>
 │ Verification            │  - Boundary testing, fault injection, stress test, tampering audit
 └──────────┬──────────────┘  - Records: input → expected → actual → root cause
            │
@@ -71,7 +78,11 @@ This reference details the step-by-step lifecycle, state machine transitions, op
    - Locate test harnesses, build targets, and lint configurations.
    - Map dependencies without performing broad, wasteful scans.
    - Establish baseline reproduction criteria (e.g., specific failing test, reproducer script, or benchmark).
-3. **Guardrail Declaration**:
+3. **Parallel Investigation Fan-Out**:
+   - When the task spans unfamiliar or broad code areas, dispatch one read-only `DeepInvestigator` per independent question (e.g., "what calls `renewLease`", "why does the timeout spike above 2MB payloads").
+   - Investigators never write files, so they run safely in the shared workspace and in parallel with each other.
+   - Merge their evidence-backed findings into the implementation brief handed to the coding worker.
+4. **Guardrail Declaration**:
    - Explicitly declare components that must **not** be modified (regression boundary).
 
 ### Phase 2: Implementation & Local Verification (Coding Worker)
@@ -85,6 +96,7 @@ This reference details the step-by-step lifecycle, state machine transitions, op
    - Apply the **Minimal Diff Principle**: only touch lines directly necessary to solve the root cause.
    - Maintain idiomatic codebase style, naming conventions, and typing guarantees.
    - **Prohibited**: Special-casing tests with hardcoded responses, skipping tests, or masking errors.
+   - **Parallel implementation**: if the coordinator spawned multiple coding workers, each runs in its own `git worktree` (or a declared disjoint file scope). A worker must never edit files outside its declared scope.
 3. **Local Deep Verification**:
    - Execute the test suite against the modified code.
    - Verify both happy path and localized edge cases (null inputs, boundary values, error branches).
@@ -100,12 +112,12 @@ This reference details the step-by-step lifecycle, state machine transitions, op
    - Clearly delineate between **Deep Verification** (automated tests actually run) and **Shallow Verification** (manual inspection/syntax check).
    - Honestly disclose all unverified aspects and edge cases.
 
-### Phase 4: Adversarial Verification (Improvement Worker)
+### Phase 4: Adversarial Verification (AdversarialVerifier)
 
 **Goal**: Attempt to break the solution before it reaches production.
 
 1. **Adversarial Mindset**:
-   - The improvement worker treats the coding worker's patch with constructive skepticism ("You are not a rubber stamp").
+   - The verification worker treats the coding worker's patch with constructive skepticism ("You are not a rubber stamp").
    - Understand the task from `<original_task>` independently BEFORE reading `<prior_attempt>`.
 2. **Targeted Red-Teaming**:
    - **Test Tampering Audit**: Did the prior attempt weaken, skip, or delete any test assertions? If so, revert immediately and record the root cause.
@@ -144,4 +156,6 @@ This reference details the step-by-step lifecycle, state machine transitions, op
 
 - **Single Handoff**: Subagents run asynchronously without chatting back and forth. They perform their complete investigation and return a single, comprehensive report.
 - **Context Isolation**: Workers operate with clean contexts to prevent prompt degradation, context pollution, or compounding errors.
+- **Filesystem Isolation**: Read-only `DeepInvestigator` workers always share the tree safely. Writers (coding workers) are serialized by default; parallel writers require one `git worktree` each or provably disjoint file scopes.
+- **Permission Inheritance**: Workers inherit the host workspace's file-access rules and command-approval policies; protected commands surface to the user.
 - **Fail-Fast Policy**: If an invariant is violated (e.g., test tampering), the coordinator immediately rejects the patch.

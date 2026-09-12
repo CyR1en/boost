@@ -32,8 +32,14 @@ The Orchestrator identifies:
 - Test suite: `test/queue/worker_queue.test.ts`
 - Constraint: Must not alter public queue API or weaken existing test timeouts.
 
+Before dispatching implementation, the Orchestrator fans out **two parallel read-only `DeepInvestigator` workers** (safe in the shared tree — they never write files):
+- Investigator A: "Which code paths write `leaseExpiresAt`, and under what interleavings?"
+- Investigator B: "Does anything outside `worker_queue.ts` (e.g., the reaper, retry scheduler) read stale lease state?"
+
+Both return evidence-backed reports; their findings are merged into the implementation brief.
+
 The Orchestrator invokes the worker:
-`invoke_subagent` with Role `Layer 0 Coding Worker` (`DeepCoderWorkerL0`).
+`invoke_subagent` with Role `Layer 0 Coding Worker` (`DeepCoderWorkerL0`), passing `<original_task>`, the merged investigator findings, and the declared file scope.
 
 ---
 
@@ -92,19 +98,19 @@ The **Layer 0 Coding Worker** receives the task in an isolated context:
 
 ---
 
-## Step 3: Adversarial Verification (Improvement Worker)
+## Step 3: Adversarial Verification (AdversarialVerifier)
 
-The **Primary Orchestrator** reads the worker's report and immediately assigns the adversarial review to the **Improvement Worker** (`DeepInvestigator`), passing `<original_task>` and the worker's report as `<prior_attempt>`.
+The **Primary Orchestrator** reads the worker's report and immediately assigns the adversarial review to the **Adversarial Verification Worker** (`AdversarialVerifier`), passing `<original_task>` and the worker's report as `<prior_attempt>`.
 
 1. **Adversarial Red-Teaming**:
-   - The Improvement Worker reads `<original_task>` independently FIRST.
+   - The AdversarialVerifier reads `<original_task>` independently FIRST.
    - Attacks the worker's admitted vulnerability: NTP clock skew.
    - Writes an adversarial stress test mocking clock skew:
      `Date.now = () => stalePastTimestamp`.
    - **Flaw Confirmed**: If the system clock steps backward by even 50ms, lease renewals are rejected as "stale", immediately triggering an unearned task timeout!
 
 2. **Root Cause Attribution & Fix**:
-   - The Improvement Worker records:
+   - The AdversarialVerifier records:
      - `input`: Simulated NTP backward time synchronization during active renewal.
      - `expected`: Monotonic lease extension based on elapsed monotonic interval.
      - `actual`: Lease expiration rejected as past timestamp.
